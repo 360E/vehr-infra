@@ -65,9 +65,6 @@ jobs:
           inlineScript: |
             set -euxo pipefail
 
-            : "${KEY_VAULT_NAME_STAGING:?Missing staging environment variable KEY_VAULT_NAME_STAGING}"
-            : "${MANAGED_IDENTITY_RESOURCE_ID_STAGING:?Missing staging environment variable MANAGED_IDENTITY_RESOURCE_ID_STAGING}"
-
             echo "Resource group: ${{ vars.AZURE_RESOURCE_GROUP_STAGING }}"
             echo "Template file: infra/main.bicep"
             echo "Parameters file: infra/parameters/staging.bicepparam"
