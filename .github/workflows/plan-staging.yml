@@ -41,10 +41,15 @@ jobs:
       - name: Bicep What-If
         id: whatif
         uses: azure/cli@v2
+        env:
+          KEY_VAULT_NAME_STAGING: ${{ vars.KEY_VAULT_NAME_STAGING }}
+          MANAGED_IDENTITY_RESOURCE_ID_STAGING: ${{ vars.MANAGED_IDENTITY_RESOURCE_ID_STAGING }}
         with:
           azcliversion: latest
           inlineScript: |
             set -euo pipefail
+            : "${KEY_VAULT_NAME_STAGING:?Missing staging environment variable KEY_VAULT_NAME_STAGING}"
+            : "${MANAGED_IDENTITY_RESOURCE_ID_STAGING:?Missing staging environment variable MANAGED_IDENTITY_RESOURCE_ID_STAGING}"
             RESULT=$(az deployment group what-if \
               --resource-group "${{ vars.AZURE_RESOURCE_GROUP_STAGING }}" \
               --template-file infra/main.bicep \
