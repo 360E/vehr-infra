@@ -9,7 +9,7 @@ targetScope = 'resourceGroup'
 @description('Short environment tag, e.g. staging or production')
 param environment string
 
-@description('Azure region for all resources')
+@description('Azure region for region-bound resources. Existing shared resources may already live elsewhere.')
 param location string = resourceGroup().location
 
 @description('Name of the Azure Container Registry (alphanumeric, 5-50 chars)')
@@ -113,6 +113,8 @@ var commonTags = {
 
 var shouldDeployControlTower = !empty(controlTowerImage)
 var effectiveControlTowerManagedIdentityId = !empty(controlTowerManagedIdentityId) ? controlTowerManagedIdentityId : managedIdentityId
+var uiEnvVarNames = [for envVar in uiEnvVars: envVar.name]
+var uiHasApiUrl = contains(uiEnvVarNames, 'VITE_API_URL')
 
 // ── Modules ─────────────────────────────────────────────────────────────────
 
@@ -148,7 +150,12 @@ module uiApp 'modules/container-app.bicep' = {
     containerImage: uiImage
     targetPort: uiTargetPort
     customDomains: uiCustomDomains
-    envVars: uiEnvVars
+    envVars: concat(uiEnvVars, uiHasApiUrl ? [] : [
+      {
+        name: 'VITE_API_URL'
+        value: 'https://${backendApp.outputs.fqdn}'
+      }
+    ])
     secrets: uiSecrets
     managedIdentityId: managedIdentityId
     minReplicas: uiMinReplicas
@@ -281,7 +288,7 @@ module controlTowerApp 'modules/container-app.bicep' = if (shouldDeployControlTo
           environment_profiles: {
             staging: {
               ui_min_replicas: 0
-              backend_min_replicas: 0
+              backend_min_replicas: 1
               control_tower_min_replicas: 1
             }
             production: {

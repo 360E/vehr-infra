@@ -50,13 +50,12 @@ Variables are not sensitive; they are visible in workflow logs.
 | Variable name                  | Example value                          | Description                            |
 |--------------------------------|----------------------------------------|----------------------------------------|
 | `AZURE_RESOURCE_GROUP_STAGING` | `vehr-revos-staging-rg`                | Resource group for staging deployments |
-| `ACR_LOGIN_SERVER_STAGING`     | `vehrrevostagingacr.azurecr.io`        | ACR login server URL (staging)         |
+| `ACR_LOGIN_SERVER_STAGING`     | `vehrrevostagingacr.azurecr.io`        | Optional override for the staging ACR login server; when unset the workflows derive it from `infra/parameters/staging.bicepparam` |
 | `KEY_VAULT_NAME_STAGING`       | `vehr-kv-staging`                      | Optional Key Vault name for staging backend secrets; leave unset to skip Key Vault-backed secret wiring during plan/bootstrap |
 | `MANAGED_IDENTITY_RESOURCE_ID_STAGING` | `/subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.ManagedIdentity/userAssignedIdentities/<name>` | Optional managed identity resource ID for staging app ACR pulls and backend secrets; when unset the workflows now try to discover it from the deployed backend app or the first identity in the staging resource group |
-| `UI_APP_NAME_STAGING`          | `vehr-revenue-ui-staging-eastus2`      | Container App name for the UI          |
-| `BACKEND_APP_NAME_STAGING`     | `vehr-revos-staging-eastus2`           | Container App name for the backend     |
-| `LEGACY_UI_APP_NAME_STAGING`   | `vehr-revenue-ui-staging-eus2`         | Optional legacy East US UI app used only as an image source during East US 2 migration |
-| `LEGACY_BACKEND_APP_NAME_STAGING` | `vehr-revos-staging-eus2`           | Optional legacy East US backend app used only as an image source during East US 2 migration |
+| `UI_IMAGE_REPOSITORY_STAGING`  | `vehr-revenue-ui`                      | Optional override for the UI image repository name used when an explicit tag is supplied |
+| `BACKEND_IMAGE_REPOSITORY_STAGING` | `vehr-api`                         | Optional override for the backend image repository name used when an explicit tag is supplied |
+| `CONTROL_TOWER_IMAGE_REPOSITORY_STAGING` | `control-tower`              | Optional override for the Control Tower image repository name |
 
 For production, duplicate the above with `_PRODUCTION` suffixes (update the
 `apply-production` workflow when you create it).
@@ -72,6 +71,12 @@ deployed backend Container App first, and then fall back to the first Key Vault
 or user-assigned identity in the staging resource group. That keeps plan,
 apply, and rollback resilient even when the GitHub environment variables are
 not populated yet.
+
+App names, staging region, Container Apps environment name, ACR name, and Log
+Analytics workspace name are now sourced directly from
+`infra/parameters/staging.bicepparam`. Do not duplicate them in GitHub
+environment variables; update the parameter file instead so Bicep and the
+workflows stay aligned.
 
 ---
 

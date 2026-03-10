@@ -49,8 +49,48 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
+      - name: Load staging deployment defaults
+        id: staging
+        run: |
+          set -euo pipefail
+          PARAM_FILE="infra/parameters/staging.bicepparam"
+
+          read_string_param() {
+            sed -nE "s/^param $1 = '(.*)'$/\\1/p" "$PARAM_FILE"
+          }
+
+          read_bool_param() {
+            sed -nE "s/^param $1 = (true|false)$/\\1/p" "$PARAM_FILE"
+          }
+
+          LOCATION="$(read_string_param location)"
+          UI_APP_NAME="$(read_string_param uiAppName)"
+          BACKEND_APP_NAME="$(read_string_param backendAppName)"
+          CONTROL_TOWER_APP_NAME="$(read_string_param controlTowerAppName)"
+          ENV_NAME="$(read_string_param containerAppsEnvName)"
+          ENV_MODE="$(read_bool_param containerAppsEnvExists)"
+          ACR_NAME="$(read_string_param acrName)"
+          ACR_MODE="$(read_bool_param acrExists)"
+          LOG_ANALYTICS_NAME="$(read_string_param logAnalyticsWorkspaceName)"
+          LOG_ANALYTICS_MODE="$(read_bool_param logAnalyticsWorkspaceExists)"
+
+          {
+            echo "location=${LOCATION}"
+            echo "ui_app_name=${UI_APP_NAME}"
+            echo "backend_app_name=${BACKEND_APP_NAME}"
+            echo "control_tower_app_name=${CONTROL_TOWER_APP_NAME}"
+            echo "container_apps_env_name=${ENV_NAME}"
+            echo "container_apps_env_exists=${ENV_MODE}"
+            echo "acr_name=${ACR_NAME}"
+            echo "acr_exists=${ACR_MODE}"
+            echo "log_analytics_name=${LOG_ANALYTICS_NAME}"
+            echo "log_analytics_exists=${LOG_ANALYTICS_MODE}"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Resolve staging runtime config
         uses: azure/cli@v2
+        env:
+          BACKEND_APP_NAME: ${{ steps.staging.outputs.backend_app_name }}
         with:
           azcliversion: latest
           inlineScript: |
@@ -58,13 +98,7 @@ jobs:
             KEY_VAULT_NAME="${{ vars.KEY_VAULT_NAME_STAGING }}"
             MANAGED_IDENTITY_RESOURCE_ID="${{ vars.MANAGED_IDENTITY_RESOURCE_ID_STAGING }}"
             RESOURCE_GROUP="${{ vars.AZURE_RESOURCE_GROUP_STAGING }}"
-            TARGET_BACKEND_APP="${{ vars.BACKEND_APP_NAME_STAGING || 'vehr-revos-staging-eastus2' }}"
-            LEGACY_BACKEND_APP="${{ vars.LEGACY_BACKEND_APP_NAME_STAGING || 'vehr-revos-staging-eus2' }}"
-            BACKEND_APP="$TARGET_BACKEND_APP"
-
-            if ! az containerapp show --name "$BACKEND_APP" --resource-group "$RESOURCE_GROUP" >/dev/null 2>&1; then
-              BACKEND_APP="$LEGACY_BACKEND_APP"
-            fi
+            BACKEND_APP="${BACKEND_APP_NAME}"
 
             if [ -z "$MANAGED_IDENTITY_RESOURCE_ID" ]; then
               APP_IDENTITY=$(az containerapp show \
@@ -99,41 +133,51 @@ jobs:
               echo "MANAGED_IDENTITY_RESOURCE_ID_STAGING=${MANAGED_IDENTITY_RESOURCE_ID}"
             } >> "$GITHUB_ENV"
 
-      - name: Preflight staging infrastructure summary
-        run: |
-          set -euo pipefail
-          PARAM_FILE="infra/parameters/staging.bicepparam"
-
-          read_string_param() {
-            sed -nE "s/^param $1 = '(.*)'$/\\1/p" "$PARAM_FILE"
-          }
-
-          read_bool_param() {
-            sed -nE "s/^param $1 = (true|false)$/\\1/p" "$PARAM_FILE"
-          }
-
-          LOCATION="$(read_string_param location)"
-          ENV_NAME="$(read_string_param containerAppsEnvName)"
-          ENV_MODE="$(read_bool_param containerAppsEnvExists)"
-          ACR_NAME="$(read_string_param acrName)"
-          ACR_MODE="$(read_bool_param acrExists)"
-          LOG_ANALYTICS_NAME="$(read_string_param logAnalyticsWorkspaceName)"
-          LOG_ANALYTICS_MODE="$(read_bool_param logAnalyticsWorkspaceExists)"
-
-          echo "Effective staging region: ${LOCATION}"
-          echo "Container Apps environment name: ${ENV_NAME}"
-          echo "Container Apps environment action: $([ "$ENV_MODE" = "true" ] && echo 'reference existing' || echo 'create new')"
-          echo "ACR resource name: ${ACR_NAME}"
-          echo "ACR action: $([ "$ACR_MODE" = "true" ] && echo 'reference existing' || echo 'create new')"
-          echo "Log Analytics resource name: ${LOG_ANALYTICS_NAME}"
-          echo "Log Analytics action: $([ "$LOG_ANALYTICS_MODE" = "true" ] && echo 'reference existing' || echo 'create new')"
-
       - name: Resolve image references
         id: tags
+        env:
+          ACR_LOGIN_SERVER_STAGING: ${{ vars.ACR_LOGIN_SERVER_STAGING }}
+          ACR_NAME: ${{ steps.staging.outputs.acr_name }}
+          UI_IMAGE_REPOSITORY_STAGING: ${{ vars.UI_IMAGE_REPOSITORY_STAGING }}
+          BACKEND_IMAGE_REPOSITORY_STAGING: ${{ vars.BACKEND_IMAGE_REPOSITORY_STAGING }}
         run: |
-          ACR_SERVER="${{ vars.ACR_LOGIN_SERVER_STAGING }}"
-          echo "ui_image=${ACR_SERVER}/revenue-ui:${{ github.event.inputs.ui_image_tag }}" >> "$GITHUB_OUTPUT"
-          echo "backend_image=${ACR_SERVER}/vehr:${{ github.event.inputs.backend_image_tag }}" >> "$GITHUB_OUTPUT"
+          set -euo pipefail
+
+          ACR_SERVER="${ACR_LOGIN_SERVER_STAGING:-${ACR_NAME}.azurecr.io}"
+          UI_REPO="${UI_IMAGE_REPOSITORY_STAGING:-vehr-revenue-ui}"
+          BACKEND_REPO="${BACKEND_IMAGE_REPOSITORY_STAGING:-vehr-api}"
+
+          echo "acr_server=${ACR_SERVER}" >> "$GITHUB_OUTPUT"
+          echo "ui_image=${ACR_SERVER}/${UI_REPO}:${{ github.event.inputs.ui_image_tag }}" >> "$GITHUB_OUTPUT"
+          echo "backend_image=${ACR_SERVER}/${BACKEND_REPO}:${{ github.event.inputs.backend_image_tag }}" >> "$GITHUB_OUTPUT"
+
+      - name: Preflight staging rollback summary
+        env:
+          RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP_STAGING }}
+        run: |
+          set -euo pipefail
+
+          {
+            echo "Effective staging region: ${{ steps.staging.outputs.location }}"
+            echo "Staging resource group: ${RESOURCE_GROUP}"
+            echo "UI app name: ${{ steps.staging.outputs.ui_app_name }}"
+            echo "Backend app name: ${{ steps.staging.outputs.backend_app_name }}"
+            echo "Control Tower app name: ${{ steps.staging.outputs.control_tower_app_name }}"
+            echo "ACR name: ${{ steps.staging.outputs.acr_name }}"
+            echo "ACR login server: ${{ steps.tags.outputs.acr_server }}"
+            echo "Container Apps environment name: ${{ steps.staging.outputs.container_apps_env_name }}"
+            echo "Container Apps environment action: $([ '${{ steps.staging.outputs.container_apps_env_exists }}' = 'true' ] && echo 'reference existing' || echo 'create/update in-place')"
+            echo "Log Analytics name: ${{ steps.staging.outputs.log_analytics_name }}"
+            echo "Log Analytics action: $([ '${{ steps.staging.outputs.log_analytics_exists }}' = 'true' ] && echo 'reference existing' || echo 'create new')"
+            echo "Rollback UI image: ${{ steps.tags.outputs.ui_image }}"
+            echo "Rollback backend image: ${{ steps.tags.outputs.backend_image }}"
+          } | tee /tmp/staging-rollback-preflight.txt
+
+          {
+            echo "## Staging rollback preflight"
+            echo
+            sed 's/^/- /' /tmp/staging-rollback-preflight.txt
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Bicep Rollback Deploy
         uses: azure/cli@v2
@@ -153,61 +197,178 @@ jobs:
               --mode Incremental \
               --name "rollback-staging-${{ github.run_number }}"
 
-      - name: Health check – UI
+      - name: Health checks after rollback
+        env:
+          RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP_STAGING }}
+          UI_APP_NAME: ${{ steps.staging.outputs.ui_app_name }}
+          BACKEND_APP_NAME: ${{ steps.staging.outputs.backend_app_name }}
         run: |
-          APP_NAME="${{ vars.UI_APP_NAME_STAGING || 'vehr-revenue-ui-staging-eastus2' }}"
-          RG="${{ vars.AZURE_RESOURCE_GROUP_STAGING }}"
-          FQDN=$(az containerapp show \
-            --name "$APP_NAME" \
-            --resource-group "$RG" \
-            --query properties.configuration.ingress.fqdn \
-            --output tsv 2>/dev/null || true)
-          if [ -z "$FQDN" ]; then
-            echo "Could not resolve UI FQDN — skipping."
-            exit 0
-          fi
-          echo "Checking https://${FQDN}/..."
-          for i in $(seq 1 10); do
-            STATUS=$(curl -s -o /dev/null -w '%{http_code}' "https://${FQDN}/" || true)
-            echo "Attempt $i — HTTP $STATUS"
-            if [[ "$STATUS" == "200" || "$STATUS" == "301" || "$STATUS" == "302" ]]; then
-              echo "UI is healthy after rollback."
-              exit 0
-            fi
-            sleep 10
-          done
-          echo "::error::UI health check failed after rollback."
-          exit 1
+          set -euo pipefail
 
-      - name: Health check – Backend
-        run: |
-          APP_NAME="${{ vars.BACKEND_APP_NAME_STAGING || 'vehr-revos-staging-eastus2' }}"
-          RG="${{ vars.AZURE_RESOURCE_GROUP_STAGING }}"
-          FQDN=$(az containerapp show \
-            --name "$APP_NAME" \
-            --resource-group "$RG" \
-            --query properties.configuration.ingress.fqdn \
-            --output tsv 2>/dev/null || true)
-          if [ -z "$FQDN" ]; then
-            echo "Could not resolve backend FQDN — skipping."
-            exit 0
+          PYTHON_BIN="$(command -v python3 || command -v python || true)"
+          if [ -z "$PYTHON_BIN" ]; then
+            echo "::error::Python is required to perform DNS readiness checks."
+            exit 1
           fi
-          echo "Checking https://${FQDN}/health..."
-          for i in $(seq 1 10); do
-            STATUS=$(curl -s -o /dev/null -w '%{http_code}' "https://${FQDN}/health" || true)
-            echo "Attempt $i — HTTP $STATUS"
-            if [[ "$STATUS" == "200" ]]; then
-              echo "Backend is healthy after rollback."
-              exit 0
+
+          print_app_diagnostics() {
+            local app_name=$1
+            az containerapp show \
+              --name "$app_name" \
+              --resource-group "$RESOURCE_GROUP" \
+              --query "{name:name,location:location,provisioningState:properties.provisioningState,latestRevisionName:properties.latestRevisionName,latestReadyRevisionName:properties.latestReadyRevisionName,ingressFqdn:properties.configuration.ingress.fqdn,externalIngress:properties.configuration.ingress.external,targetPort:properties.configuration.ingress.targetPort,minReplicas:properties.template.scale.minReplicas}" \
+              --output jsonc 2>/dev/null || true
+          }
+
+          dns_ready() {
+            local host=$1
+            local backoff_seconds=5
+            local dns_error
+            local dns_status
+
+            for i in $(seq 1 12); do
+              set +e
+              dns_error=$("$PYTHON_BIN" -c "import socket, sys; socket.getaddrinfo(sys.argv[1], None)" "$host" 2>&1)
+              dns_status=$?
+              set -e
+
+              if [ "$dns_status" -eq 0 ]; then
+                echo "DNS resolved for ${host} on attempt ${i}."
+                return 0
+              fi
+
+              if [ "$i" -eq 12 ] && [ -n "$dns_error" ]; then
+                echo "Final DNS lookup error:"
+                echo "$dns_error"
+              fi
+
+              wait_seconds=$((i * backoff_seconds))
+              echo "DNS not ready for ${host} on attempt ${i}; waiting ${wait_seconds}s before retrying."
+              sleep "$wait_seconds"
+            done
+
+            return 1
+          }
+
+          is_acceptable_status() {
+            local status=$1
+            shift
+
+            for acceptable in "$@"; do
+              if [ "$status" = "$acceptable" ]; then
+                return 0
+              fi
+            done
+
+            return 1
+          }
+
+          classify_failure() {
+            local curl_exit=$1
+            local status=$2
+
+            if [ "$curl_exit" -ne 0 ] || [ -z "$status" ] || [ "$status" = "000" ]; then
+              printf '%s' 'ingress failure or TLS/connectivity issue'
+            elif [ "$status" = "404" ]; then
+              printf '%s' 'wrong health endpoint'
+            elif [[ "$status" == 5* ]]; then
+              printf '%s' 'app boot failure'
+            else
+              printf '%s' "unexpected HTTP status ${status}"
             fi
-            sleep 10
-          done
-          echo "::error::Backend health check failed after rollback."
-          exit 1
+          }
+
+          check_service() {
+            local service_name=$1
+            local app_name=$2
+            local health_path=$3
+            shift 3
+            local acceptable_statuses=("$@")
+            local fqdn
+
+            fqdn=$(az containerapp show \
+              --name "$app_name" \
+              --resource-group "$RESOURCE_GROUP" \
+              --query properties.configuration.ingress.fqdn \
+              --output tsv 2>/dev/null || true)
+
+            echo "---- ${service_name} diagnostics ----"
+            echo "App name: ${app_name}"
+            echo "Resolved live FQDN: ${fqdn:-<empty>}"
+            print_app_diagnostics "$app_name"
+
+            if [ -z "$fqdn" ]; then
+              echo "::error::${service_name}: rollback finished but no ingress FQDN is published."
+              return 1
+            fi
+
+            if ! dns_ready "$fqdn"; then
+              echo "::error::${service_name}: DNS propagation delay prevented ${fqdn} from resolving after rollback."
+              return 1
+            fi
+
+            local url="https://${fqdn}${health_path}"
+            local response_body
+            local curl_stderr
+            local last_status=''
+            local last_curl_exit=0
+            local backoff_seconds=5
+
+            response_body=$(mktemp)
+            curl_stderr=$(mktemp)
+
+            for i in $(seq 1 10); do
+              > "$response_body"
+              > "$curl_stderr"
+
+              set +e
+              last_status=$(curl --silent --show-error \
+                --output "$response_body" \
+                --write-out '%{http_code}' \
+                --max-time 20 \
+                "$url" 2>"$curl_stderr")
+              last_curl_exit=$?
+              set -e
+
+              echo "${service_name} attempt ${i} — curl exit ${last_curl_exit}, HTTP ${last_status}"
+              if [ -s "$curl_stderr" ]; then
+                cat "$curl_stderr"
+              fi
+
+              if [ "$last_curl_exit" -eq 0 ] && is_acceptable_status "$last_status" "${acceptable_statuses[@]}"; then
+                echo "${service_name} is healthy after rollback."
+                rm -f "$response_body" "$curl_stderr"
+                return 0
+              fi
+
+              wait_seconds=$((i * backoff_seconds))
+              echo "${service_name} not ready yet; waiting ${wait_seconds}s before retrying."
+              sleep "$wait_seconds"
+            done
+
+            echo "::error::${service_name}: $(classify_failure "$last_curl_exit" "$last_status") while checking ${url} after rollback."
+            if [ -s "$curl_stderr" ]; then
+              echo "Last curl error output:"
+              cat "$curl_stderr"
+            fi
+            if [ -s "$response_body" ]; then
+              echo "Last response body:"
+              cat "$response_body"
+            fi
+            rm -f "$response_body" "$curl_stderr"
+            return 1
+          }
+
+          check_service "UI" "$UI_APP_NAME" "/" 200 301 302 307 308
+          check_service "Backend" "$BACKEND_APP_NAME" "/api/v1/health" 200
 
       - name: Summary
         run: |
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "## ✅ Rollback complete" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Region: \`${{ steps.staging.outputs.location }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Resource group: \`${{ vars.AZURE_RESOURCE_GROUP_STAGING }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- UI app: \`${{ steps.staging.outputs.ui_app_name }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Backend app: \`${{ steps.staging.outputs.backend_app_name }}\`" >> "$GITHUB_STEP_SUMMARY"
           echo "- UI rolled back to: \`${{ steps.tags.outputs.ui_image }}\`" >> "$GITHUB_STEP_SUMMARY"
           echo "- Backend rolled back to: \`${{ steps.tags.outputs.backend_image }}\`" >> "$GITHUB_STEP_SUMMARY"

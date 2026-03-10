@@ -44,7 +44,7 @@ param controlTowerAppName = 'control-tower-staging-eastus2'
 // ── Images — updated by the apply-staging workflow ─────────────────────────
 // Format: <acrLoginServer>/<repo>:<tag>
 param uiImage = 'vehrrevostagingacr.azurecr.io/vehr-revenue-ui:latest'
-param backendImage = 'vehrrevostagingacr.azurecr.io/vehr:latest'
+param backendImage = 'vehrrevostagingacr.azurecr.io/vehr-api:latest'
 param controlTowerImage = ''
 
 // ── Ports ───────────────────────────────────────────────────────────────────
@@ -54,7 +54,7 @@ param controlTowerTargetPort = 3000
 
 // ── Scaling ─────────────────────────────────────────────────────────────────
 param uiMinReplicas = 0
-param backendMinReplicas = 0
+param backendMinReplicas = 1
 param controlTowerMinReplicas = 1
 
 // ── Custom domains (leave empty until certs are provisioned) ─────────────
@@ -68,13 +68,6 @@ param uiEnvVars = [
   {
     name: 'NODE_ENV'
     value: 'production'
-  }
-  {
-    name: 'VITE_API_URL'
-    // Replace with your Container Apps environment default domain from Azure Portal,
-    // or with your custom domain once configured.
-    // Format: https://<backend-app-name>.<env-unique-id>.<region>.azurecontainerapps.io
-    value: 'https://vehr-revos-staging-eastus2.<REPLACE_WITH_ENV_DEFAULT_DOMAIN>'
   }
 ]
 

@@ -218,3 +218,11 @@ test('default revenue UI health endpoint falls back to the UI root route', () =>
     }
   }
 });
+
+test('default staging environment profile keeps the backend warm', () => {
+  const config = loadConfig();
+
+  assert.equal(config.environment_profiles.staging.ui_min_replicas, 0);
+  assert.equal(config.environment_profiles.staging.backend_min_replicas, 1);
+  assert.equal(config.environment_profiles.staging.control_tower_min_replicas, 1);
+});
