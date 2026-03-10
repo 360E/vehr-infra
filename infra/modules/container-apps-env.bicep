@@ -7,6 +7,9 @@ param envName string
 @description('Azure region to deploy into')
 param location string
 
+@description('When true, reference an existing Container Apps managed environment instead of creating it')
+param useExistingEnvironment bool = false
+
 @description('Optional override for the Log Analytics workspace name')
 param logAnalyticsWorkspaceName string = ''
 
@@ -35,7 +38,11 @@ resource logAnalytics 'Microsoft.OperationalInsights/workspaces@2022-10-01' = if
   }
 }
 
-resource containerAppsEnv 'Microsoft.App/managedEnvironments@2023-05-01' = {
+resource existingContainerAppsEnv 'Microsoft.App/managedEnvironments@2023-05-01' existing = if (useExistingEnvironment) {
+  name: envName
+}
+
+resource containerAppsEnv 'Microsoft.App/managedEnvironments@2023-05-01' = if (!useExistingEnvironment) {
   name: envName
   location: location
   tags: tags
@@ -51,7 +58,7 @@ resource containerAppsEnv 'Microsoft.App/managedEnvironments@2023-05-01' = {
 }
 
 @description('Resource ID of the managed environment')
-output resourceId string = containerAppsEnv.id
+output resourceId string = useExistingEnvironment ? existingContainerAppsEnv.id : containerAppsEnv.id
 
 @description('Name of the managed environment (for Container App references)')
-output name string = containerAppsEnv.name
+output name string = useExistingEnvironment ? existingContainerAppsEnv.name : containerAppsEnv.name

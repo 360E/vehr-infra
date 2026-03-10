@@ -13,25 +13,33 @@ var managedIdentityResourceId = readEnvironmentVariable('MANAGED_IDENTITY_RESOUR
 var hasBackendSecretConfig = !empty(keyVaultName) && !empty(managedIdentityResourceId)
 
 param environment = 'staging'
+// Shared staging resources stay on their legacy footprint, but the staging
+// application runtime is explicitly deployed in East US 2.
 param location = 'eastus2'
 
 // ── Container Registry ──────────────────────────────────────────────────────
-// Reuse the legacy staging registry that already exists in East US.
+// Reuse the long-lived staging registry; it remains a shared staging resource.
 param acrName = 'vehrrevostagingacr'
 param acrSku = 'Basic'
 param acrExists = true
 
 // ── Container Apps Environment ──────────────────────────────────────────────
-param containerAppsEnvName = 'vehr-env-staging'
-// Reuse the legacy staging workspace so the new East US 2 environment does not
-// attempt to recreate an East US resource with the same name.
+// The Container Apps environment is region-bound, so East US 2 gets its own
+// unique environment name instead of trying to recreate the legacy East US one.
+param containerAppsEnvName = 'vehr-env-staging-eastus2'
+param containerAppsEnvExists = false
+// Reuse the shared staging workspace instead of duplicating logs per region.
 param logAnalyticsWorkspaceName = 'vehr-env-staging-logs'
 param logAnalyticsWorkspaceExists = true
 
 // ── App names ───────────────────────────────────────────────────────────────
-param uiAppName = 'vehr-revenue-ui-staging-eus2'
-param backendAppName = 'vehr-revos-staging-eus2'
-param controlTowerAppName = 'control-tower-staging'
+// Container Apps are region-bound, so the East US 2 deployment uses new,
+// unambiguous names instead of the legacy East US app identities.
+// Control Tower keeps its established service name prefix for consistency with
+// the existing app and workflow inputs.
+param uiAppName = 'vehr-revenue-ui-staging-eastus2'
+param backendAppName = 'vehr-revos-staging-eastus2'
+param controlTowerAppName = 'control-tower-staging-eastus2'
 
 // ── Images — updated by the apply-staging workflow ─────────────────────────
 // Format: <acrLoginServer>/<repo>:<tag>
@@ -66,7 +74,7 @@ param uiEnvVars = [
     // Replace with your Container Apps environment default domain from Azure Portal,
     // or with your custom domain once configured.
     // Format: https://<backend-app-name>.<env-unique-id>.<region>.azurecontainerapps.io
-    value: 'https://vehr-revos-staging-eus2.<REPLACE_WITH_ENV_DEFAULT_DOMAIN>'
+    value: 'https://vehr-revos-staging-eastus2.<REPLACE_WITH_ENV_DEFAULT_DOMAIN>'
   }
 ]
 
