@@ -17,7 +17,7 @@ param useExisting bool = false
 @description('Resource tags')
 param tags object = {}
 
-resource existingAcr 'Microsoft.ContainerRegistry/registries@2023-07-01' existing = {
+resource existingAcr 'Microsoft.ContainerRegistry/registries@2023-07-01' existing = if (useExisting) {
   name: acrName
 }
 
@@ -36,7 +36,7 @@ resource acr 'Microsoft.ContainerRegistry/registries@2023-07-01' = if (!useExist
 }
 
 @description('Login server URL, e.g. myregistry.azurecr.io')
-output loginServer string = useExisting ? existingAcr.properties.loginServer : acr!.properties.loginServer
+output loginServer string = useExisting ? existingAcr!.properties.loginServer : acr!.properties.loginServer
 
 @description('Resource ID of the registry')
-output resourceId string = useExisting ? existingAcr.id : acr!.id
+output resourceId string = useExisting ? existingAcr!.id : acr!.id

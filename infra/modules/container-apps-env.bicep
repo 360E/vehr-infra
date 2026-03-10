@@ -19,7 +19,7 @@ param tags object = {}
 var effectiveLogAnalyticsWorkspaceName = empty(logAnalyticsWorkspaceName) ? '${envName}-logs' : logAnalyticsWorkspaceName
 
 // Log Analytics workspace to capture environment logs
-resource existingLogAnalytics 'Microsoft.OperationalInsights/workspaces@2022-10-01' existing = {
+resource existingLogAnalytics 'Microsoft.OperationalInsights/workspaces@2022-10-01' existing = if (useExistingLogAnalyticsWorkspace) {
   name: effectiveLogAnalyticsWorkspaceName
 }
 
@@ -43,8 +43,8 @@ resource containerAppsEnv 'Microsoft.App/managedEnvironments@2023-05-01' = {
     appLogsConfiguration: {
       destination: 'log-analytics'
       logAnalyticsConfiguration: {
-        customerId: useExistingLogAnalyticsWorkspace ? existingLogAnalytics.properties.customerId : logAnalytics!.properties.customerId
-        sharedKey: useExistingLogAnalyticsWorkspace ? existingLogAnalytics.listKeys().primarySharedKey : logAnalytics!.listKeys().primarySharedKey
+        customerId: useExistingLogAnalyticsWorkspace ? existingLogAnalytics!.properties.customerId : logAnalytics!.properties.customerId
+        sharedKey: useExistingLogAnalyticsWorkspace ? existingLogAnalytics!.listKeys().primarySharedKey : logAnalytics!.listKeys().primarySharedKey
       }
     }
   }
