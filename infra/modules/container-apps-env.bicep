@@ -22,7 +22,7 @@ param tags object = {}
 var effectiveLogAnalyticsWorkspaceName = empty(logAnalyticsWorkspaceName) ? '${envName}-logs' : logAnalyticsWorkspaceName
 
 // Log Analytics workspace to capture environment logs
-resource existingLogAnalytics 'Microsoft.OperationalInsights/workspaces@2022-10-01' existing = if (useExistingLogAnalyticsWorkspace && !useExistingEnvironment) {
+resource existingLogAnalytics 'Microsoft.OperationalInsights/workspaces@2022-10-01' existing = if (useExistingLogAnalyticsWorkspace) {
   name: effectiveLogAnalyticsWorkspaceName
 }
 
