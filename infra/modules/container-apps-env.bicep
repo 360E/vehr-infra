@@ -7,12 +7,24 @@ param envName string
 @description('Azure region to deploy into')
 param location string
 
+@description('Optional override for the Log Analytics workspace name')
+param logAnalyticsWorkspaceName string = ''
+
+@description('When true, reference an existing Log Analytics workspace instead of creating it')
+param useExistingLogAnalyticsWorkspace bool = false
+
 @description('Resource tags')
 param tags object = {}
 
+var effectiveLogAnalyticsWorkspaceName = empty(logAnalyticsWorkspaceName) ? '${envName}-logs' : logAnalyticsWorkspaceName
+
 // Log Analytics workspace to capture environment logs
-resource logAnalytics 'Microsoft.OperationalInsights/workspaces@2022-10-01' = {
-  name: '${envName}-logs'
+resource existingLogAnalytics 'Microsoft.OperationalInsights/workspaces@2022-10-01' existing = if (useExistingLogAnalyticsWorkspace) {
+  name: effectiveLogAnalyticsWorkspaceName
+}
+
+resource logAnalytics 'Microsoft.OperationalInsights/workspaces@2022-10-01' = if (!useExistingLogAnalyticsWorkspace) {
+  name: effectiveLogAnalyticsWorkspaceName
   location: location
   tags: tags
   properties: {
@@ -31,8 +43,8 @@ resource containerAppsEnv 'Microsoft.App/managedEnvironments@2023-05-01' = {
     appLogsConfiguration: {
       destination: 'log-analytics'
       logAnalyticsConfiguration: {
-        customerId: logAnalytics.properties.customerId
-        sharedKey: logAnalytics.listKeys().primarySharedKey
+        customerId: useExistingLogAnalyticsWorkspace ? existingLogAnalytics!.properties.customerId : logAnalytics!.properties.customerId
+        sharedKey: useExistingLogAnalyticsWorkspace ? existingLogAnalytics!.listKeys().primarySharedKey : logAnalytics!.listKeys().primarySharedKey
       }
     }
   }

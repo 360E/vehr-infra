@@ -16,12 +16,17 @@ param environment = 'staging'
 param location = 'eastus2'
 
 // ── Container Registry ──────────────────────────────────────────────────────
-// Reuse an existing registry name if one is already established in Azure.
+// Reuse the legacy staging registry that already exists in East US.
 param acrName = 'vehrrevostagingacr'
 param acrSku = 'Basic'
+param acrExists = true
 
 // ── Container Apps Environment ──────────────────────────────────────────────
 param containerAppsEnvName = 'vehr-env-staging'
+// Reuse the legacy staging workspace so the new East US 2 environment does not
+// attempt to recreate an East US resource with the same name.
+param logAnalyticsWorkspaceName = 'vehr-env-staging-logs'
+param logAnalyticsWorkspaceExists = true
 
 // ── App names ───────────────────────────────────────────────────────────────
 param uiAppName = 'vehr-revenue-ui-staging-eus2'

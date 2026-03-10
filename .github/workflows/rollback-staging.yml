@@ -93,6 +93,31 @@ jobs:
               echo "MANAGED_IDENTITY_RESOURCE_ID_STAGING=${MANAGED_IDENTITY_RESOURCE_ID}"
             } >> "$GITHUB_ENV"
 
+      - name: Preflight staging infrastructure summary
+        run: |
+          set -euo pipefail
+          PARAM_FILE="infra/parameters/staging.bicepparam"
+
+          read_string_param() {
+            sed -nE "s/^param $1 = '(.*)'$/\\1/p" "$PARAM_FILE"
+          }
+
+          read_bool_param() {
+            sed -nE "s/^param $1 = (true|false)$/\\1/p" "$PARAM_FILE"
+          }
+
+          LOCATION="$(read_string_param location)"
+          ACR_NAME="$(read_string_param acrName)"
+          ACR_MODE="$(read_bool_param acrExists)"
+          LOG_ANALYTICS_NAME="$(read_string_param logAnalyticsWorkspaceName)"
+          LOG_ANALYTICS_MODE="$(read_bool_param logAnalyticsWorkspaceExists)"
+
+          echo "Target location: ${LOCATION}"
+          echo "ACR resource name: ${ACR_NAME}"
+          echo "ACR action: $([ "$ACR_MODE" = "true" ] && echo 'reference existing' || echo 'create new')"
+          echo "Log Analytics resource name: ${LOG_ANALYTICS_NAME}"
+          echo "Log Analytics action: $([ "$LOG_ANALYTICS_MODE" = "true" ] && echo 'reference existing' || echo 'create new')"
+
       - name: Resolve image references
         id: tags
         run: |
