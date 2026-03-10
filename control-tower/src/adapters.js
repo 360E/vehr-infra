@@ -12,6 +12,23 @@ function safeNumber(value) {
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
 
+function getConfiguredAppNames(env, snapshot) {
+  const snapshotAppNames = (snapshot.apps ?? []).map((app) => app.app_name ?? app.name);
+  return JSON.parse(env.AZURE_CONTAINER_APP_NAMES_JSON ?? JSON.stringify(snapshotAppNames));
+}
+
+function databaseRecommendedAction({ missingTables, connectivitySkipped, hasTableInventory }) {
+  if (missingTables.includes('claim_ledgers')) {
+    return 'Snapshot worker is unsafe to run until the claim_ledgers table is restored.';
+  }
+
+  if (connectivitySkipped && !hasTableInventory) {
+    return 'Provide a database snapshot or host target to enable runtime schema diagnostics.';
+  }
+
+  return 'Validate migrations and investigate failed background writes.';
+}
+
 function classifyHttpStatus(statusCode) {
   if (statusCode >= 200 && statusCode < 300) {
     return { status: STATUSES.HEALTHY, severity: SEVERITIES.INFO };
@@ -210,7 +227,7 @@ export class AzureOperationsAdapter {
   async collect(config) {
     const resourceGroup = this.env.AZURE_RESOURCE_GROUP ?? this.snapshot.resource_group ?? null;
     const subscriptionId = this.env.AZURE_SUBSCRIPTION_ID ?? this.snapshot.subscription_id ?? null;
-    const appNames = JSON.parse(this.env.AZURE_CONTAINER_APP_NAMES_JSON ?? JSON.stringify((this.snapshot.apps ?? []).map((app) => app.app_name ?? app.name)));
+    const appNames = getConfiguredAppNames(this.env, this.snapshot);
 
     if (!subscriptionId || !resourceGroup || appNames.length === 0) {
       return {
@@ -397,11 +414,11 @@ export class DatabaseAdapter {
           schema_drift_indicators: database.schema_drift_indicators ?? [],
           failed_background_writes: failedBackgroundWrites
         },
-        recommended_action: missingTables.includes('claim_ledgers')
-          ? 'Snapshot worker is unsafe to run until the claim_ledgers table is restored.'
-          : connectivity.skipped && !hasTableInventory
-            ? 'Provide a database snapshot or host target to enable runtime schema diagnostics.'
-            : 'Validate migrations and investigate failed background writes.'
+        recommended_action: databaseRecommendedAction({
+          missingTables,
+          connectivitySkipped: connectivity.skipped,
+          hasTableInventory
+        })
       }
     };
   }
