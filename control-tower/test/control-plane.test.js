@@ -157,7 +157,7 @@ test('command validation and execution enforce operator attribution and auditabi
   assert.equal(result.audit.operator, 'ops@example.com');
 });
 
-test('default staging deployment app names target the live EUS2 apps', () => {
+test('default staging deployment app names target the East US 2 staging apps', () => {
   const originalRevenueUiAppName = process.env.CONTROL_TOWER_REVENUE_UI_APP_NAME;
   const originalBackendAppName = process.env.CONTROL_TOWER_BACKEND_APP_NAME;
 
@@ -169,11 +169,11 @@ test('default staging deployment app names target the live EUS2 apps', () => {
 
     assert.equal(
       config.deployments.find((deployment) => deployment.service === 'revenue-ui')?.app_name,
-      'vehr-revenue-ui-staging-eus2'
+      'vehr-revenue-ui-staging-eastus2'
     );
     assert.equal(
       config.deployments.find((deployment) => deployment.service === 'vehr-backend-api')?.app_name,
-      'vehr-revos-staging-eus2'
+      'vehr-revos-staging-eastus2'
     );
   } finally {
     if (originalRevenueUiAppName === undefined) {

@@ -25,6 +25,9 @@ param acrExists bool = false
 @description('Name of the Container Apps managed environment')
 param containerAppsEnvName string
 
+@description('When true, reference an existing Container Apps managed environment instead of creating it')
+param containerAppsEnvExists bool = false
+
 @description('Name of the Log Analytics workspace used by the Container Apps environment')
 param logAnalyticsWorkspaceName string = ''
 
@@ -129,6 +132,7 @@ module env 'modules/container-apps-env.bicep' = {
   params: {
     envName: containerAppsEnvName
     location: location
+    useExistingEnvironment: containerAppsEnvExists
     logAnalyticsWorkspaceName: logAnalyticsWorkspaceName
     useExistingLogAnalyticsWorkspace: logAnalyticsWorkspaceExists
     tags: commonTags

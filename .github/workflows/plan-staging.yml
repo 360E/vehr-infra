@@ -44,7 +44,13 @@ jobs:
             KEY_VAULT_NAME="${{ vars.KEY_VAULT_NAME_STAGING }}"
             MANAGED_IDENTITY_RESOURCE_ID="${{ vars.MANAGED_IDENTITY_RESOURCE_ID_STAGING }}"
             RESOURCE_GROUP="${{ vars.AZURE_RESOURCE_GROUP_STAGING }}"
-            BACKEND_APP="${{ vars.BACKEND_APP_NAME_STAGING || 'vehr-revos-staging-eus2' }}"
+            TARGET_BACKEND_APP="${{ vars.BACKEND_APP_NAME_STAGING || 'vehr-revos-staging-eastus2' }}"
+            LEGACY_BACKEND_APP="${{ vars.LEGACY_BACKEND_APP_NAME_STAGING || 'vehr-revos-staging-eus2' }}"
+            BACKEND_APP="$TARGET_BACKEND_APP"
+
+            if ! az containerapp show --name "$BACKEND_APP" --resource-group "$RESOURCE_GROUP" >/dev/null 2>&1; then
+              BACKEND_APP="$LEGACY_BACKEND_APP"
+            fi
 
             if [ -z "$MANAGED_IDENTITY_RESOURCE_ID" ]; then
               APP_IDENTITY=$(az containerapp show \
@@ -93,12 +99,16 @@ jobs:
           }
 
           LOCATION="$(read_string_param location)"
+          ENV_NAME="$(read_string_param containerAppsEnvName)"
+          ENV_MODE="$(read_bool_param containerAppsEnvExists)"
           ACR_NAME="$(read_string_param acrName)"
           ACR_MODE="$(read_bool_param acrExists)"
           LOG_ANALYTICS_NAME="$(read_string_param logAnalyticsWorkspaceName)"
           LOG_ANALYTICS_MODE="$(read_bool_param logAnalyticsWorkspaceExists)"
 
-          echo "Target location: ${LOCATION}"
+          echo "Effective staging region: ${LOCATION}"
+          echo "Container Apps environment name: ${ENV_NAME}"
+          echo "Container Apps environment action: $([ "$ENV_MODE" = "true" ] && echo 'reference existing' || echo 'create new')"
           echo "ACR resource name: ${ACR_NAME}"
           echo "ACR action: $([ "$ACR_MODE" = "true" ] && echo 'reference existing' || echo 'create new')"
           echo "Log Analytics resource name: ${LOG_ANALYTICS_NAME}"

@@ -53,8 +53,10 @@ Variables are not sensitive; they are visible in workflow logs.
 | `ACR_LOGIN_SERVER_STAGING`     | `vehrrevostagingacr.azurecr.io`        | ACR login server URL (staging)         |
 | `KEY_VAULT_NAME_STAGING`       | `vehr-kv-staging`                      | Optional Key Vault name for staging backend secrets; leave unset to skip Key Vault-backed secret wiring during plan/bootstrap |
 | `MANAGED_IDENTITY_RESOURCE_ID_STAGING` | `/subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.ManagedIdentity/userAssignedIdentities/<name>` | Optional managed identity resource ID for staging app ACR pulls and backend secrets; when unset the workflows now try to discover it from the deployed backend app or the first identity in the staging resource group |
-| `UI_APP_NAME_STAGING`          | `vehr-revenue-ui-staging-eus2`         | Container App name for the UI          |
-| `BACKEND_APP_NAME_STAGING`     | `vehr-revos-staging-eus2`              | Container App name for the backend     |
+| `UI_APP_NAME_STAGING`          | `vehr-revenue-ui-staging-eastus2`      | Container App name for the UI          |
+| `BACKEND_APP_NAME_STAGING`     | `vehr-revos-staging-eastus2`           | Container App name for the backend     |
+| `LEGACY_UI_APP_NAME_STAGING`   | `vehr-revenue-ui-staging-eus2`         | Optional legacy East US UI app used only as an image source during East US 2 migration |
+| `LEGACY_BACKEND_APP_NAME_STAGING` | `vehr-revos-staging-eus2`           | Optional legacy East US backend app used only as an image source during East US 2 migration |
 
 For production, duplicate the above with `_PRODUCTION` suffixes (update the
 `apply-production` workflow when you create it).

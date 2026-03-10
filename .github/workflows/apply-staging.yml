@@ -50,7 +50,13 @@ jobs:
             KEY_VAULT_NAME="${{ vars.KEY_VAULT_NAME_STAGING }}"
             MANAGED_IDENTITY_RESOURCE_ID="${{ vars.MANAGED_IDENTITY_RESOURCE_ID_STAGING }}"
             RESOURCE_GROUP="${{ vars.AZURE_RESOURCE_GROUP_STAGING }}"
-            BACKEND_APP="${{ vars.BACKEND_APP_NAME_STAGING || 'vehr-revos-staging-eus2' }}"
+            TARGET_BACKEND_APP="${{ vars.BACKEND_APP_NAME_STAGING || 'vehr-revos-staging-eastus2' }}"
+            LEGACY_BACKEND_APP="${{ vars.LEGACY_BACKEND_APP_NAME_STAGING || 'vehr-revos-staging-eus2' }}"
+            BACKEND_APP="$TARGET_BACKEND_APP"
+
+            if ! az containerapp show --name "$BACKEND_APP" --resource-group "$RESOURCE_GROUP" >/dev/null 2>&1; then
+              BACKEND_APP="$LEGACY_BACKEND_APP"
+            fi
 
             if [ -z "$MANAGED_IDENTITY_RESOURCE_ID" ]; then
               APP_IDENTITY=$(az containerapp show \
@@ -99,12 +105,16 @@ jobs:
           }
 
           LOCATION="$(read_string_param location)"
+          ENV_NAME="$(read_string_param containerAppsEnvName)"
+          ENV_MODE="$(read_bool_param containerAppsEnvExists)"
           ACR_NAME="$(read_string_param acrName)"
           ACR_MODE="$(read_bool_param acrExists)"
           LOG_ANALYTICS_NAME="$(read_string_param logAnalyticsWorkspaceName)"
           LOG_ANALYTICS_MODE="$(read_bool_param logAnalyticsWorkspaceExists)"
 
-          echo "Target location: ${LOCATION}"
+          echo "Effective staging region: ${LOCATION}"
+          echo "Container Apps environment name: ${ENV_NAME}"
+          echo "Container Apps environment action: $([ "$ENV_MODE" = "true" ] && echo 'reference existing' || echo 'create new')"
           echo "ACR resource name: ${ACR_NAME}"
           echo "ACR action: $([ "$ACR_MODE" = "true" ] && echo 'reference existing' || echo 'create new')"
           echo "Log Analytics resource name: ${LOG_ANALYTICS_NAME}"
@@ -115,8 +125,10 @@ jobs:
         env:
           ACR_SERVER: ${{ vars.ACR_LOGIN_SERVER_STAGING }}
           RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP_STAGING }}
-          UI_APP_NAME: ${{ vars.UI_APP_NAME_STAGING || 'vehr-revenue-ui-staging-eus2' }}
-          BACKEND_APP_NAME: ${{ vars.BACKEND_APP_NAME_STAGING || 'vehr-revos-staging-eus2' }}
+          UI_APP_NAME: ${{ vars.UI_APP_NAME_STAGING || 'vehr-revenue-ui-staging-eastus2' }}
+          BACKEND_APP_NAME: ${{ vars.BACKEND_APP_NAME_STAGING || 'vehr-revos-staging-eastus2' }}
+          LEGACY_UI_APP_NAME: ${{ vars.LEGACY_UI_APP_NAME_STAGING || 'vehr-revenue-ui-staging-eus2' }}
+          LEGACY_BACKEND_APP_NAME: ${{ vars.LEGACY_BACKEND_APP_NAME_STAGING || 'vehr-revos-staging-eus2' }}
           UI_IMAGE_REPOSITORY_STAGING: ${{ vars.UI_IMAGE_REPOSITORY_STAGING }}
           BACKEND_IMAGE_REPOSITORY_STAGING: ${{ vars.BACKEND_IMAGE_REPOSITORY_STAGING }}
           CONTROL_TOWER_IMAGE_REPOSITORY_STAGING: ${{ vars.CONTROL_TOWER_IMAGE_REPOSITORY_STAGING }}
@@ -132,36 +144,43 @@ jobs:
           CONTROL_TOWER_TAG="${{ github.event.inputs.control_tower_image_tag || github.event.client_payload.control_tower_image_tag || '' }}"
 
           resolve_live_image() {
-            local app_name="$1"
             local image
+            local app_name
 
-            image=$(az containerapp show \
-              --name "$app_name" \
-              --resource-group "$RESOURCE_GROUP" \
-              --query "properties.template.containers[?name=='$app_name'] | [0].image" \
-              --output tsv 2>/dev/null || true)
-
-            if [ -z "$image" ]; then
+            for app_name in "$@"; do
               image=$(az containerapp show \
                 --name "$app_name" \
                 --resource-group "$RESOURCE_GROUP" \
-                --query "properties.template.containers[0].image" \
+                --query "properties.template.containers[?name=='$app_name'] | [0].image" \
                 --output tsv 2>/dev/null || true)
-            fi
 
-            printf '%s' "$image"
+              if [ -z "$image" ]; then
+                image=$(az containerapp show \
+                  --name "$app_name" \
+                  --resource-group "$RESOURCE_GROUP" \
+                  --query "properties.template.containers[0].image" \
+                  --output tsv 2>/dev/null || true)
+              fi
+
+              if [ -n "$image" ]; then
+                printf '%s' "$image"
+                return 0
+              fi
+            done
+
+            return 1
           }
 
           if [ -n "$UI_TAG" ]; then
             UI_IMAGE="${ACR_SERVER}/${UI_REPO}:${UI_TAG}"
           else
-            UI_IMAGE="$(resolve_live_image "$UI_APP_NAME")"
+            UI_IMAGE="$(resolve_live_image "$UI_APP_NAME" "$LEGACY_UI_APP_NAME")"
           fi
 
           if [ -n "$BACKEND_TAG" ]; then
             BACKEND_IMAGE="${ACR_SERVER}/${BACKEND_REPO}:${BACKEND_TAG}"
           else
-            BACKEND_IMAGE="$(resolve_live_image "$BACKEND_APP_NAME")"
+            BACKEND_IMAGE="$(resolve_live_image "$BACKEND_APP_NAME" "$LEGACY_BACKEND_APP_NAME")"
           fi
 
           if [ -z "$UI_IMAGE" ]; then
