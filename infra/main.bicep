@@ -19,8 +19,17 @@ param acrName string
 @allowed(['Basic', 'Standard', 'Premium'])
 param acrSku string = 'Basic'
 
+@description('When true, reference an existing ACR instead of creating it')
+param acrExists bool = false
+
 @description('Name of the Container Apps managed environment')
 param containerAppsEnvName string
+
+@description('Name of the Log Analytics workspace used by the Container Apps environment')
+param logAnalyticsWorkspaceName string = ''
+
+@description('When true, reference an existing Log Analytics workspace instead of creating it')
+param logAnalyticsWorkspaceExists bool = false
 
 @description('Full image reference for the UI container app')
 param uiImage string
@@ -110,6 +119,7 @@ module acr 'modules/container-registry.bicep' = {
     acrName: acrName
     location: location
     sku: acrSku
+    useExisting: acrExists
     tags: commonTags
   }
 }
@@ -119,6 +129,8 @@ module env 'modules/container-apps-env.bicep' = {
   params: {
     envName: containerAppsEnvName
     location: location
+    logAnalyticsWorkspaceName: logAnalyticsWorkspaceName
+    useExistingLogAnalyticsWorkspace: logAnalyticsWorkspaceExists
     tags: commonTags
   }
 }

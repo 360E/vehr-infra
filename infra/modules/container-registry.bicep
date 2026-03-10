@@ -11,10 +11,17 @@ param location string
 @allowed(['Basic', 'Standard', 'Premium'])
 param sku string = 'Basic'
 
+@description('When true, reference an existing registry instead of creating it')
+param useExisting bool = false
+
 @description('Resource tags')
 param tags object = {}
 
-resource acr 'Microsoft.ContainerRegistry/registries@2023-07-01' = {
+resource existingAcr 'Microsoft.ContainerRegistry/registries@2023-07-01' existing = {
+  name: acrName
+}
+
+resource acr 'Microsoft.ContainerRegistry/registries@2023-07-01' = if (!useExisting) {
   name: acrName
   location: location
   tags: tags
@@ -29,7 +36,7 @@ resource acr 'Microsoft.ContainerRegistry/registries@2023-07-01' = {
 }
 
 @description('Login server URL, e.g. myregistry.azurecr.io')
-output loginServer string = acr.properties.loginServer
+output loginServer string = useExisting ? existingAcr.properties.loginServer : acr!.properties.loginServer
 
 @description('Resource ID of the registry')
-output resourceId string = acr.id
+output resourceId string = useExisting ? existingAcr.id : acr!.id
