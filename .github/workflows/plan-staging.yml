@@ -35,8 +35,48 @@ jobs:
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
+      - name: Load staging deployment defaults
+        id: staging
+        run: |
+          set -euo pipefail
+          PARAM_FILE="infra/parameters/staging.bicepparam"
+
+          read_string_param() {
+            sed -nE "s/^param $1 = '(.*)'$/\\1/p" "$PARAM_FILE"
+          }
+
+          read_bool_param() {
+            sed -nE "s/^param $1 = (true|false)$/\\1/p" "$PARAM_FILE"
+          }
+
+          LOCATION="$(read_string_param location)"
+          UI_APP_NAME="$(read_string_param uiAppName)"
+          BACKEND_APP_NAME="$(read_string_param backendAppName)"
+          CONTROL_TOWER_APP_NAME="$(read_string_param controlTowerAppName)"
+          ENV_NAME="$(read_string_param containerAppsEnvName)"
+          ENV_MODE="$(read_bool_param containerAppsEnvExists)"
+          ACR_NAME="$(read_string_param acrName)"
+          ACR_MODE="$(read_bool_param acrExists)"
+          LOG_ANALYTICS_NAME="$(read_string_param logAnalyticsWorkspaceName)"
+          LOG_ANALYTICS_MODE="$(read_bool_param logAnalyticsWorkspaceExists)"
+
+          {
+            echo "location=${LOCATION}"
+            echo "ui_app_name=${UI_APP_NAME}"
+            echo "backend_app_name=${BACKEND_APP_NAME}"
+            echo "control_tower_app_name=${CONTROL_TOWER_APP_NAME}"
+            echo "container_apps_env_name=${ENV_NAME}"
+            echo "container_apps_env_exists=${ENV_MODE}"
+            echo "acr_name=${ACR_NAME}"
+            echo "acr_exists=${ACR_MODE}"
+            echo "log_analytics_name=${LOG_ANALYTICS_NAME}"
+            echo "log_analytics_exists=${LOG_ANALYTICS_MODE}"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Resolve staging runtime config
         uses: azure/cli@v2
+        env:
+          BACKEND_APP_NAME: ${{ steps.staging.outputs.backend_app_name }}
         with:
           azcliversion: latest
           inlineScript: |
@@ -44,13 +84,7 @@ jobs:
             KEY_VAULT_NAME="${{ vars.KEY_VAULT_NAME_STAGING }}"
             MANAGED_IDENTITY_RESOURCE_ID="${{ vars.MANAGED_IDENTITY_RESOURCE_ID_STAGING }}"
             RESOURCE_GROUP="${{ vars.AZURE_RESOURCE_GROUP_STAGING }}"
-            TARGET_BACKEND_APP="${{ vars.BACKEND_APP_NAME_STAGING || 'vehr-revos-staging-eastus2' }}"
-            LEGACY_BACKEND_APP="${{ vars.LEGACY_BACKEND_APP_NAME_STAGING || 'vehr-revos-staging-eus2' }}"
-            BACKEND_APP="$TARGET_BACKEND_APP"
-
-            if ! az containerapp show --name "$BACKEND_APP" --resource-group "$RESOURCE_GROUP" >/dev/null 2>&1; then
-              BACKEND_APP="$LEGACY_BACKEND_APP"
-            fi
+            BACKEND_APP="${BACKEND_APP_NAME}"
 
             if [ -z "$MANAGED_IDENTITY_RESOURCE_ID" ]; then
               APP_IDENTITY=$(az containerapp show \
@@ -86,33 +120,34 @@ jobs:
             } >> "$GITHUB_ENV"
 
       - name: Preflight staging infrastructure summary
+        env:
+          RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP_STAGING }}
+          ACR_LOGIN_SERVER: ${{ vars.ACR_LOGIN_SERVER_STAGING }}
         run: |
           set -euo pipefail
-          PARAM_FILE="infra/parameters/staging.bicepparam"
 
-          read_string_param() {
-            sed -nE "s/^param $1 = '(.*)'$/\\1/p" "$PARAM_FILE"
-          }
+          EFFECTIVE_ACR_LOGIN_SERVER="${ACR_LOGIN_SERVER:-${{ steps.staging.outputs.acr_name }}.azurecr.io}"
 
-          read_bool_param() {
-            sed -nE "s/^param $1 = (true|false)$/\\1/p" "$PARAM_FILE"
-          }
+          {
+            echo "Effective staging region: ${{ steps.staging.outputs.location }}"
+            echo "Staging resource group: ${RESOURCE_GROUP}"
+            echo "UI app name: ${{ steps.staging.outputs.ui_app_name }}"
+            echo "Backend app name: ${{ steps.staging.outputs.backend_app_name }}"
+            echo "Control Tower app name: ${{ steps.staging.outputs.control_tower_app_name }}"
+            echo "Container Apps environment name: ${{ steps.staging.outputs.container_apps_env_name }}"
+            echo "Container Apps environment action: $([ '${{ steps.staging.outputs.container_apps_env_exists }}' = 'true' ] && echo 'reference existing' || echo 'create/update in-place')"
+            echo "ACR resource name: ${{ steps.staging.outputs.acr_name }}"
+            echo "ACR login server: ${EFFECTIVE_ACR_LOGIN_SERVER}"
+            echo "ACR action: $([ '${{ steps.staging.outputs.acr_exists }}' = 'true' ] && echo 'reference existing' || echo 'create new')"
+            echo "Log Analytics resource name: ${{ steps.staging.outputs.log_analytics_name }}"
+            echo "Log Analytics action: $([ '${{ steps.staging.outputs.log_analytics_exists }}' = 'true' ] && echo 'reference existing' || echo 'create new')"
+          } | tee /tmp/staging-plan-preflight.txt
 
-          LOCATION="$(read_string_param location)"
-          ENV_NAME="$(read_string_param containerAppsEnvName)"
-          ENV_MODE="$(read_bool_param containerAppsEnvExists)"
-          ACR_NAME="$(read_string_param acrName)"
-          ACR_MODE="$(read_bool_param acrExists)"
-          LOG_ANALYTICS_NAME="$(read_string_param logAnalyticsWorkspaceName)"
-          LOG_ANALYTICS_MODE="$(read_bool_param logAnalyticsWorkspaceExists)"
-
-          echo "Effective staging region: ${LOCATION}"
-          echo "Container Apps environment name: ${ENV_NAME}"
-          echo "Container Apps environment action: $([ "$ENV_MODE" = "true" ] && echo 'reference existing' || echo 'create new')"
-          echo "ACR resource name: ${ACR_NAME}"
-          echo "ACR action: $([ "$ACR_MODE" = "true" ] && echo 'reference existing' || echo 'create new')"
-          echo "Log Analytics resource name: ${LOG_ANALYTICS_NAME}"
-          echo "Log Analytics action: $([ "$LOG_ANALYTICS_MODE" = "true" ] && echo 'reference existing' || echo 'create new')"
+          {
+            echo "## Staging plan preflight"
+            echo
+            sed 's/^/- /' /tmp/staging-plan-preflight.txt
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Bicep What-If
         id: whatif

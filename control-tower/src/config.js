@@ -253,7 +253,7 @@ function defaultPlatformConfig() {
     environment_profiles: {
       staging: {
         ui_min_replicas: 0,
-        backend_min_replicas: 0,
+        backend_min_replicas: 1,
         control_tower_min_replicas: 1
       },
       production: {

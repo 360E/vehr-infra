@@ -45,7 +45,7 @@ Tannrow/VEHR        ──┘
 
 | GitHub Environment | Azure Resource Group | Protection |
 |--------------------|-----------------------|-----------|
-| `staging` | `rg-vehr-staging` | None (auto-deploys on push to `main`) |
+| `staging` | `vehr-revos-staging-rg` | None (auto-deploys on push to `main`) |
 | `production` | `rg-vehr-prod` | Required reviewer approval |
 
 ### Workflows
@@ -61,6 +61,17 @@ Tannrow/VEHR        ──┘
 See [`docs/SECRETS.md`](docs/SECRETS.md) for a complete list of GitHub secrets,
 environment variables, and Key Vault secrets that must be configured before the
 workflows will run.
+
+### Staging regional model
+
+- **Runtime region:** `eastus2`
+- **Runtime Container Apps:** `vehr-revenue-ui-staging-eastus2`, `vehr-revos-staging-eastus2`, and optionally `control-tower-staging-eastus2`
+- **Shared staging infrastructure reused in place:** `vehrrevostagingacr` (ACR) and `vehr-env-staging-logs` (Log Analytics)
+- **Container Apps environment:** `vehr-env-staging-eastus2`
+
+The staging workflows derive the runtime app names, region, and shared resource
+names from `infra/parameters/staging.bicepparam` so the repo has a single
+deploy-critical source of truth.
 
 ### Directory Structure
 
@@ -93,13 +104,13 @@ vehr-infra/
 ```bash
 # Preview changes without applying (staging)
 az deployment group what-if \
-  --resource-group rg-vehr-staging \
+  --resource-group vehr-revos-staging-rg \
   --template-file infra/main.bicep \
   --parameters infra/parameters/staging.bicepparam
 
 # Apply changes (staging)
 az deployment group create \
-  --resource-group rg-vehr-staging \
+  --resource-group vehr-revos-staging-rg \
   --template-file infra/main.bicep \
   --parameters infra/parameters/staging.bicepparam \
   --mode Incremental
