@@ -112,8 +112,15 @@ jobs:
             UI_IMAGE=$(az containerapp show \
               --name "$UI_APP_NAME" \
               --resource-group "$RESOURCE_GROUP" \
-              --query "properties.template.containers[0].image" \
+              --query "properties.template.containers[?name=='$UI_APP_NAME'] | [0].image" \
               --output tsv 2>/dev/null || true)
+            if [ -z "$UI_IMAGE" ]; then
+              UI_IMAGE=$(az containerapp show \
+                --name "$UI_APP_NAME" \
+                --resource-group "$RESOURCE_GROUP" \
+                --query "properties.template.containers[0].image" \
+                --output tsv 2>/dev/null || true)
+            fi
           fi
 
           if [ -n "$BACKEND_TAG" ]; then
@@ -122,17 +129,24 @@ jobs:
             BACKEND_IMAGE=$(az containerapp show \
               --name "$BACKEND_APP_NAME" \
               --resource-group "$RESOURCE_GROUP" \
-              --query "properties.template.containers[0].image" \
+              --query "properties.template.containers[?name=='$BACKEND_APP_NAME'] | [0].image" \
               --output tsv 2>/dev/null || true)
+            if [ -z "$BACKEND_IMAGE" ]; then
+              BACKEND_IMAGE=$(az containerapp show \
+                --name "$BACKEND_APP_NAME" \
+                --resource-group "$RESOURCE_GROUP" \
+                --query "properties.template.containers[0].image" \
+                --output tsv 2>/dev/null || true)
+            fi
           fi
 
           if [ -z "$UI_IMAGE" ]; then
-            echo "::error::No UI image tag was provided and no existing UI image could be resolved from ${UI_APP_NAME}."
+            echo "::error::No UI image tag was provided and no existing UI image could be resolved from ${UI_APP_NAME} in resource group ${RESOURCE_GROUP}."
             exit 1
           fi
 
           if [ -z "$BACKEND_IMAGE" ]; then
-            echo "::error::No backend image tag was provided and no existing backend image could be resolved from ${BACKEND_APP_NAME}."
+            echo "::error::No backend image tag was provided and no existing backend image could be resolved from ${BACKEND_APP_NAME} in resource group ${RESOURCE_GROUP}."
             exit 1
           fi
 
