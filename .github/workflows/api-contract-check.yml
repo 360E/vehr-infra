@@ -48,9 +48,22 @@ on:
         required: false
         type: string
         default: ''
+      schema_search_max_depth:
+        description: Max directory depth to search when auto-discovering a baseline schema file
+        required: false
+        type: number
+        default: 3
+      contract_test_path:
+        description: Backend contract test path to execute with pytest
+        required: false
+        type: string
+        default: tests/test_api_contracts.py
     secrets:
       APP_REPO_PAT:
         required: false
+
+permissions:
+  contents: read
 
 jobs:
   verify:
@@ -65,7 +78,7 @@ jobs:
           repository: ${{ inputs.backend_repository }}
           ref: ${{ inputs.backend_ref }}
           path: ${{ inputs.backend_path }}
-          token: ${{ secrets.APP_REPO_PAT != '' && secrets.APP_REPO_PAT || github.token }}
+          token: ${{ secrets.APP_REPO_PAT || github.token }}
 
       - name: Checkout frontend repository
         uses: actions/checkout@v4
@@ -73,7 +86,7 @@ jobs:
           repository: ${{ inputs.frontend_repository }}
           ref: ${{ inputs.frontend_ref }}
           path: ${{ inputs.frontend_path }}
-          token: ${{ secrets.APP_REPO_PAT != '' && secrets.APP_REPO_PAT || github.token }}
+          token: ${{ secrets.APP_REPO_PAT || github.token }}
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -152,7 +165,12 @@ jobs:
               exit 1
             fi
 
-            sleep $((attempt * 2))
+            wait_seconds=$((attempt * 2))
+            if [ "$wait_seconds" -gt 10 ]; then
+              wait_seconds=10
+            fi
+
+            sleep "$wait_seconds"
           done
 
           python - "$RAW_SCHEMA_PATH" "$NORMALIZED_SCHEMA_PATH" <<'PY'
@@ -189,6 +207,7 @@ jobs:
           BACKEND_PATH: ${{ inputs.backend_path }}
           FRONTEND_PATH: ${{ inputs.frontend_path }}
           SCHEMA_BASELINE_PATH: ${{ inputs.schema_baseline_path }}
+          SCHEMA_SEARCH_MAX_DEPTH: ${{ inputs.schema_search_max_depth }}
           COMPARISON_SCHEMA_URL: ${{ inputs.comparison_schema_url }}
           CURRENT_SCHEMA_PATH: ${{ steps.schema.outputs.normalized_path }}
         run: |
@@ -237,7 +256,7 @@ jobs:
               normalize_json "$candidate" "$NORMALIZED_BASELINE_PATH"
               RESOLVED_BASELINE_PATH="$candidate"
               break
-            done < <(find "$BACKEND_PATH" "$FRONTEND_PATH" -maxdepth 3 -type f \( -name 'openapi*.json' -o -name 'swagger*.json' \) | sort)
+            done < <(find "$BACKEND_PATH" "$FRONTEND_PATH" -maxdepth "$SCHEMA_SEARCH_MAX_DEPTH" -type f \( -name 'openapi*.json' -o -name 'swagger*.json' \) | sort)
           fi
 
           if [ -z "$RESOLVED_BASELINE_PATH" ]; then
@@ -275,9 +294,11 @@ jobs:
       - name: Run backend contract tests
         working-directory: ${{ inputs.backend_path }}
         shell: bash
+        env:
+          CONTRACT_TEST_PATH: ${{ inputs.contract_test_path }}
         run: |
           set -euo pipefail
-          pytest tests/test_api_contracts.py
+          pytest "$CONTRACT_TEST_PATH"
 
       - name: Install frontend dependencies
         working-directory: ${{ inputs.frontend_path }}
@@ -285,6 +306,22 @@ jobs:
         run: |
           set -euo pipefail
           npm install
+
+      - name: Validate frontend contract scripts
+        working-directory: ${{ inputs.frontend_path }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const pkg = require('./package.json');
+          const scripts = pkg.scripts || {};
+          const missing = ['generate-api-types', 'build'].filter((name) => !scripts[name]);
+
+          if (missing.length) {
+            console.error(`::error::package.json is missing required npm script(s): ${missing.join(', ')}`);
+            process.exit(1);
+          }
+          NODE
 
       - name: Generate frontend API types
         working-directory: ${{ inputs.frontend_path }}
