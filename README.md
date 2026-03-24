@@ -83,6 +83,7 @@ Current runtime contract:
 vehr-infra/
 ├── .github/
 │   └── workflows/
+│       ├── api-contract-check.yml # Reusable contract gate for backend + UI validation
 │       ├── plan-staging.yml       # What-If diff on PRs
 │       ├── apply-staging.yml      # Deploy to staging
 │       └── rollback-staging.yml   # Revert staging to a previous image tag
