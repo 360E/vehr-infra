@@ -1,7 +1,7 @@
 # vehr-infra
 
 Central infrastructure repository for the VEHR / Revenue-UI platform.
-All Azure resources are managed as code here and deployed via GitHub Actions — no manual portal changes required.
+All Azure resources are managed as code here and applied from Azure CLI or the VS Code terminal — no manual portal changes required.
 
 ---
 
@@ -11,11 +11,11 @@ All Azure resources are managed as code here and deployed via GitHub Actions —
 
 `vehr-infra` is the **single source of truth** for all cloud infrastructure. It uses
 [Azure Bicep](https://learn.microsoft.com/en-us/azure/azure-resource-manager/bicep/overview)
-to declare resources and GitHub Actions to plan and apply changes.
+to declare resources and Azure CLI to preview and apply changes.
 
 ```
 360E/VEHR-Revenue-UI  ──┐
-                         ├─► build & push image ──► ACR ──► Azure Container Apps
+                         ├─► local/VS Code build & push ──► ACR ──► Azure Container Apps
 360E/VEHR              ──┘
                                                               │
                                                   vehr-infra Bicep (ports/env/topology)
@@ -25,42 +25,34 @@ to declare resources and GitHub Actions to plan and apply changes.
 
 | Repo | Role |
 |------|------|
-| `360E/VEHR-Revenue-UI` | Next.js App Router frontend — owns Dockerfile, app code, and staging image/deploy workflows |
-| `360E/VEHR` | Python/FastAPI backend — owns Dockerfile, app code, and staging image/deploy workflows |
+| `360E/VEHR-Revenue-UI` | Next.js App Router frontend — owns Dockerfile, app code, and the frontend image/runtime contract |
+| `360E/VEHR` | Python/FastAPI backend — owns Dockerfile, app code, and the backend image/runtime contract |
 | `360E/VEHR-infra` *(this repo)* | Infrastructure as code plus the VEHR Control Tower operations service |
 
 ### How to make changes
 
 | Type of change | Where to make it | How it deploys |
 |----------------|-----------------|----------------|
-| App code (UI or backend) | In the respective app repo | The app repo `deploy-staging` workflow builds, pushes, and updates the matching staging Container App directly; use this repo when the staging image/env contract itself needs to change |
-| Azure resource config (scaling, env vars, domains, secrets) | Edit `infra/parameters/staging.bicepparam` or `infra/parameters/production.bicepparam` in **this repo** | Open a PR → `plan-staging` runs What-If → merge → `apply-staging` deploys |
+| App code (UI or backend) | In the respective app repo | Build the image, push it to ACR, and update the matching Container App directly from Azure CLI or the VS Code terminal; use this repo when the staging image/env contract itself needs to change |
+| Azure resource config (scaling, env vars, domains, secrets) | Edit `infra/parameters/staging.bicepparam` or `infra/parameters/production.bicepparam` in **this repo** | Run `az deployment group what-if`, then `az deployment group create` |
 | New Azure resource | Add a module in `infra/modules/` and wire it into `infra/main.bicep` | Same as above |
-| Emergency rollback | Run the **Rollback – Staging** workflow manually with the desired image tags | Workflow redeploys the specified tags |
+| Emergency rollback | Update the affected Container App to a known-good image tag with Azure CLI | The target app is pinned back to the specified image |
 
 > **Rule:** Never make infrastructure changes through the Azure portal. All drift
 > will be overwritten on the next deployment.
 
 ### Environments
 
-| GitHub Environment | Azure Resource Group | Protection |
-|--------------------|-----------------------|-----------|
-| `staging` | `vehr-revos-staging-rg` | None (auto-deploys on push to `main`) |
-| `production` | `rg-vehr-prod` | Required reviewer approval |
-
-### Workflows
-
-| Workflow | File | Trigger |
-|----------|------|---------|
-| **Plan – Staging** | `.github/workflows/plan-staging.yml` | PR touching `infra/**` |
-| **Apply – Staging** | `.github/workflows/apply-staging.yml` | Push to `main` touching `infra/**`, manual dispatch, or `repository_dispatch` from app repos |
-| **Rollback – Staging** | `.github/workflows/rollback-staging.yml` | Manual (`workflow_dispatch`) |
+| Environment | Azure Resource Group | Notes |
+|-------------|----------------------|-------|
+| `staging` | `vehr-revos-staging-rg` | East US 2 staging runtime |
+| `production` | `rg-vehr-prod` | Production runtime |
 
 ### Secrets & Variables
 
-See [`docs/SECRETS.md`](docs/SECRETS.md) for a complete list of GitHub secrets,
-environment variables, and Key Vault secrets that must be configured before the
-workflows will run.
+See [`docs/SECRETS.md`](docs/SECRETS.md) for the Azure auth prerequisites,
+parameter-file rules, and Key Vault secrets needed before you apply infra or
+deploy images.
 
 ### Staging regional model
 
@@ -69,9 +61,9 @@ workflows will run.
 - **Shared staging infrastructure reused in place:** `vehrrevostagingacr` (ACR) and `vehr-env-staging-logs` (Log Analytics)
 - **Container Apps environment:** `vehr-env-staging-eastus2`
 
-The staging workflows derive the runtime app names, region, and shared resource
-names from `infra/parameters/staging.bicepparam` so the repo has a single
-deploy-critical source of truth.
+The staging deployment commands derive the runtime app names, region, and
+shared resource names from `infra/parameters/staging.bicepparam` so the repo
+has a single deploy-critical source of truth.
 
 Current runtime contract:
 - The UI Container App runs the Next.js server on port `3000` and injects `NEXT_PUBLIC_API_URL` plus `BACKEND_INTERNAL_URL`.
@@ -81,11 +73,6 @@ Current runtime contract:
 
 ```
 vehr-infra/
-├── .github/
-│   └── workflows/
-│       ├── plan-staging.yml       # What-If diff on PRs
-│       ├── apply-staging.yml      # Deploy to staging
-│       └── rollback-staging.yml   # Revert staging to a previous image tag
 ├── infra/
 │   ├── main.bicep                 # Root template (wires all modules together)
 │   ├── modules/
@@ -132,8 +119,8 @@ az deployment group create \
    { name: 'MY_SECRET_VAR', secretRef: 'my-secret-name' }
    ```
    And add the corresponding entry to `backendSecrets`.
-3. Open a PR — `plan-staging` will show the diff.
-4. Merge — `apply-staging` will deploy.
+3. Run `az deployment group what-if` to preview the change.
+4. Run `az deployment group create` to apply it.
 
 ### VEHR Control Tower
 
@@ -162,8 +149,8 @@ Control Tower is wired into `infra/main.bicep`, but deployment is intentionally
 image is published. To deploy it:
 
 1. Build and push a `control-tower` image to your registry.
-2. Run **Apply – Staging** with `control_tower_image_tag`, or pass
-   `controlTowerImage=<registry>/control-tower:<tag>` via Azure CLI.
+2. Run `az deployment group create` and pass
+   `controlTowerImage=<registry>/control-tower:<tag>`.
 3. After deployment, Control Tower auto-discovers the VEHR UI/backend FQDNs and
    exposes live platform health, deployment state, incidents, alerts, and safe
    recovery commands in one place.
@@ -176,16 +163,14 @@ image is published. To deploy it:
    param uiCustomDomains = [
      {
        name: 'app.yourdomain.com'
-       certificateId: '/subscriptions/.../certificates/my-cert'
+     certificateId: '/subscriptions/.../certificates/my-cert'
      }
    ]
    ```
-3. Open a PR, review the What-If output, and merge.
+3. Run `az deployment group what-if`, then `az deployment group create`.
 
 ### Rollback procedure
 
-1. Find the image tag you want to revert to (e.g. from the ACR tag list or a previous workflow run summary).
-2. Go to **Actions → Rollback – Staging → Run workflow**.
-3. Enter the UI and backend image tags.
-4. Enter a brief reason (for the audit log).
-5. Click **Run workflow** — the workflow will redeploy and run health checks automatically.
+1. Find the image tag you want to revert to (for example from the ACR tag list).
+2. Run `az containerapp update` against the affected UI and/or backend Container App with the known-good image tag.
+3. Re-run the relevant health checks after the image update completes.
